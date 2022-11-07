@@ -1,26 +1,91 @@
-version: 2
+# Elixir CircleCI 2.0 configuration file
+#
+# Check https://circleci.com/docs/2.0/language-elixir/ for more details
+
+version: 2.1
+
 jobs:
-  build:
+  run-tests:
+    parallelism: 1
     docker:
-      - image: circleci/elixir:1.8.1
+      - image: cimg/elixir:1.13.4
         environment:
           MIX_ENV: test
+      - image: circleci/postgres:10.1-alpine
+        environment:
+          POSTGRES_USER: postgres
+          POSTGRES_DB: core_test
+          POSTGRES_PASSWORD: postgres
+    resource_class: small
 
-    working_directory: ~/repo
+    working_directory: ~/app
+
     steps:
+      - run: mix local.hex --force
+      - run: mix local.rebar --force
+      - run: mix hex.organization auth coverflex_engineering --key $HEX_API_KEY
+
       - checkout
-      - run: mix local.hex --force # install Hex locally (without prompt)
-      - run: mix local.rebar --force # fetch a copy of rebar (without prompt)
 
       - restore_cache:
           keys:
-            - mix-cache-{{ checksum "mix.lock" }}
-
-      - run: mix do deps.get
+            - v1-mix-cache-{{ .Branch }}-{{ checksum "mix.lock" }}
+            - v1-mix-cache-{{ .Branch }}
+            - v1-mix-cache
+      - restore_cache:
+          keys:
+            - v1-build-cache-{{ .Branch }}
+            - v1-build-cache
+      - run: mix hex.repo add oban https://getoban.pro/repo --fetch-public-key $OBAN_KEY_FINGERPRINT --auth-key $OBAN_LICENSE_KEY
+      - run: mix do deps.get, deps.compile
       - save_cache:
-          key: mix-cache-{{ checksum "mix.lock" }}
+          key: v1-mix-cache-{{ .Branch }}-{{ checksum "mix.lock" }}
           paths: "deps"
+      - save_cache:
+          key: v1-build-cache-{{ .Branch }}
+          paths: "_build"
 
+      - run:
+          name: Wait for DB
+          command: dockerize -wait tcp://localhost:5432 -timeout 1m
+
+      - run: mix ecto.create
       - run: mix format --check-formatted
+      - run: mix credo
       - run: mix test
-      - run: MIX_ENV=prod mix compile
+
+      - store_test_results:
+          path: _build/test/lib/bamboo
+
+  publish-package:
+    docker:
+      - image: cimg/elixir:1.13.4
+    resource_class: small
+    working_directory: ~/app
+
+    steps:
+      - run: mix local.hex --force
+      - run: mix local.rebar --force
+      - run: mix hex.organization auth coverflex_engineering --key $HEX_API_KEY
+      - checkout
+      - run: mix hex.repo add oban https://getoban.pro/repo --fetch-public-key $OBAN_KEY_FINGERPRINT --auth-key $OBAN_LICENSE_KEY
+      - run: mix do deps.get, deps.compile
+      - run: HEX_API_KEY=$HEX_API_KEY mix hex.publish package --yes
+
+workflows:
+  test_and_publish:
+    jobs:
+      - run-tests:
+          context:
+            - Oban
+            - Hex
+      - publish-package:
+          context:
+            - Oban
+            - Hex
+          filters:
+            tags:
+              only:
+                - /^v\d+\.\d+\.\d+$/
+            branches:
+              ignore: /.*/
