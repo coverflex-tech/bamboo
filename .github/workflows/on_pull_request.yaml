@@ -1,0 +1,28 @@
+---
+name: On pull request
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+      - hotfix/**
+    paths-ignore:
+    - 'infra/**'
+    - '.github/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  run-tests:
+    uses: coverflex-tech/global-actions/.github/workflows/elixir_run_tests.yaml@main
+    with:
+      ELIXIR_VERSION: 1.13.4
+      OTP_VERSION: 24.3.4
+    secrets:
+      CI_PAT: ${{ secrets.CI_PAT }}
+      OBAN_KEY_FINGERPRINT: ${{ secrets.OBAN_KEY_FINGERPRINT }}
+      OBAN_LICENSE_KEY: ${{ secrets.OBAN_LICENSE_KEY }}
+      HEX_API_KEY: ${{ secrets.HEX_API_KEY }}

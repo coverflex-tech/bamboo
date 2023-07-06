@@ -4,6 +4,16 @@
 
 version: 2.1
 
+commands:
+  check-changed-files-or-halt:
+    steps:
+      - run: |
+          if echo "$(git diff --name-only origin/main HEAD)" | grep -qE '\.github\/.*\.(yaml|yml)$'; then
+            # if there is a change in the .github folder, halt the build
+            echo "Stopping build because there is a change in the .github folder"
+            circleci-agent step halt
+          fi
+
 jobs:
   run-tests:
     parallelism: 1
@@ -21,11 +31,11 @@ jobs:
     working_directory: ~/app
 
     steps:
+      - checkout
+      - check-changed-files-or-halt
       - run: mix local.hex --force
       - run: mix local.rebar --force
       - run: mix hex.organization auth coverflex_engineering --key $HEX_API_KEY
-
-      - checkout
 
       - restore_cache:
           keys:
@@ -61,10 +71,11 @@ jobs:
     working_directory: ~/app
 
     steps:
+      - checkout
+      - check-changed-files-or-halt
       - run: mix local.hex --force
       - run: mix local.rebar --force
       - run: mix hex.organization auth coverflex_engineering --key $HEX_API_KEY
-      - checkout
       - run: mix do deps.get, deps.compile
       - run: HEX_API_KEY=$HEX_API_KEY mix hex.publish package --yes
 
