@@ -1,0 +1,23 @@
+---
+name: On push main
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}
+
+jobs:
+  tag-and-publish:
+    uses: coverflex-tech/global-actions/.github/workflows/elixir_tag_and_publish.yaml@main
+    with:
+      ELIXIR_VERSION: 1.13.4
+      OTP_VERSION: 24.3.4
+    secrets:
+      OBAN_KEY_FINGERPRINT: ${{ secrets.OBAN_KEY_FINGERPRINT }}
+      OBAN_LICENSE_KEY: ${{ secrets.OBAN_LICENSE_KEY }}
+      HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
+      CI_PAT: ${{ secrets.CI_PAT }}
